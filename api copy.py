@@ -7,12 +7,12 @@ from pydantic import BaseModel
 from typing import Optional, List
 from query_processing import process_query, vector_search, extract_attributes
 from scraper import is_url, scrape_job_description
+import uvicorn
 
 # Configure logging if not already configured
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Initialize FastAPI app
 app = FastAPI()
 
 class Query(BaseModel):
@@ -78,18 +78,16 @@ async def recommend(query: Query):
             }
         )
 
-# Entry point for running the app directly (useful for local testing)
 if __name__ == "__main__":
+    # Configure server with single worker for better resource management
     # Disable TensorFlow logging for cleaner output
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
-    # Use Uvicorn to run the app locally
-    import uvicorn
+    
     uvicorn.run(
         "api:app",
-        host="0.0.0.0",  # Bind to all interfaces
-        port=8000,       # Use port 8000 (default for AWS deployments)
-        workers=1,       # Single worker to prevent resource conflicts
+        host="0.0.0.0",
+        port=5000,
+        workers=1,  # Single worker to prevent resource conflicts
         log_level="info",
         limit_concurrency=10  # Limit concurrent requests
     )
