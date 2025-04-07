@@ -146,7 +146,7 @@ def extract_attributes(distances, indices):
                     continue
                     
                 item = processed_data[idx]
-                similarity_score = 1 / (1 + distances[0][i])  # Convert distance to similarity score
+                similarity_score = 1 / (0.5 + distances[0][i])  # Adjusted formula to boost similarity scores
                 
                 # Filter to only include assessment-specific URLs containing '/view/'
                 if '/view/' not in item.get('url', ''):
