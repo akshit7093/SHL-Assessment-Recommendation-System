@@ -36,7 +36,7 @@ def get_llm():
             You are a helpful assistant designed to analyze job descriptions and extract key information.
             Reply like you are the website and guiding users like a first person perspective.
             Based *only* on the following text content, please provide:
-            1. A concise summary of the main topic (2-4 sentences).
+            1. A concise description of the particular assessment (2-4 sentences).
             2. Key features, benefits, or what it measures (up to 5 bullet points).
             Scraped Content:
             {context}
@@ -128,7 +128,7 @@ def extract_attributes(distances, indices):
                 return [{
                     'Assessment Name': 'Error',
                     'URL': 'N/A',
-                    'Summary': f"Error loading assessment data: {str(e)}",
+                    'description': f"Error loading assessment data: {str(e)}",
                     'Key Features': [],
                     'Duration': '',
                     'Remote Testing': False,
@@ -164,24 +164,24 @@ def extract_attributes(distances, indices):
                         f"""Assessment Data:
                         {extracted_text}
                         
-                        Please analyze this assessment and provide structured output with these exact section headers:
+                        Please analyze this specific assessment and provide a focused, assessment-specific output with these exact section headers. Avoid general company information.
                         
-                        ## Summary:
-                        [Short summary regarding the assessment]
+                        ## description:
+                        [Provide a 1 sentence description that specifically describes what this assessment measures, its primary purpose, and its target audience. Focus only on this specific assessment's unique characteristics.]
                         
                         ## Key Features:
-                        - [Feature 1]
-                        - [Feature 2]
-                        - [Feature 3]
+                        - [List 3-5 specific features or capabilities of this assessment]
+                        - [Focus on what skills/abilities it measures]
+                        - [Include technical aspects like adaptive testing if applicable]
                         
                         ## Duration:
-                        [Time like minutes or duration of the assessment or esstimated relative]
+                        [Specify exact duration in minutes if available, or provide estimated time range]
                         
                         ## Remote Testing:
-                        [Yes/No]
+                        [Yes/No - Include any specific remote proctoring details if available]
                         
-                        ## Additional Details:
-                        [Any other relevant information]
+                        ## Target Role/Level:
+                        [Specify the job roles, levels, or industries this assessment is designed for]
                         """
                     )
                 except Exception as e:
@@ -191,44 +191,66 @@ def extract_attributes(distances, indices):
                 
                 # Process the structured analysis output
                 analysis_lines = analysis.split('\n')
-                summary = ''
+                description = ''
                 features = []
                 assessment_name = item.get('title', '') or 'SHL Assessment'
                 duration = ''
                 remote_testing = False
                 
-                # Parse the structured response
-                current_section = None
+                # Parse the structured response sections
+                current_section = ''
                 for line in analysis_lines:
                     line = line.strip()
-                    if not line:
-                        continue
-                        
-                    # Section detection with exact headers
-                    if line.startswith('## Summary:'):
-                        current_section = 'summary'
-                        summary = line.replace('## Summary:', '').strip()
-                    elif line.startswith('## Key Features:'):
-                        current_section = 'features'
-                    elif line.startswith('## Duration:'):
-                        current_section = 'duration'
-                        duration = line.replace('## Duration:', '').strip()
-                    elif line.startswith('## Remote Testing:'):
-                        current_section = 'remote'
-                        remote_testing = 'yes' in line.lower() or 'true' in line.lower()
-                    elif line.startswith('## Additional Details:'):
-                        current_section = 'details'
-                    else:
-                        # Content processing based on current section
-                        if current_section == 'summary' and not summary:
-                            summary = line
-                        elif current_section == 'features':
-                            if line.startswith('-'):
-                                features.append(line.lstrip('- ').strip())
-                        elif current_section == 'duration' and not duration:
-                            duration = line
-                        elif current_section == 'remote' and not remote_testing:
-                            remote_testing = 'yes' in line.lower()
+                    if line.startswith('##'):
+                        current_section = line.replace('#', '').strip().lower()
+                    elif line and current_section == 'description:':
+                        description = line.strip('[]')
+                    elif line.startswith('-') and current_section == 'key features:':
+                        feature = line.strip('- []')
+                        if feature:
+                            features.append(feature)
+                    elif current_section == 'duration:':
+                        if line and not line.startswith('['):
+                            duration = line.strip('[]')
+                    elif current_section == 'remote testing:':
+                        remote_testing = 'yes' in line.lower() or 'available' in line.lower() or 'supported' in line.lower()
+                # Parse the structured response sections
+                current_section = ''
+                for line in analysis_lines:
+                    line = line.strip()
+                    if line.startswith('##'):
+                        current_section = line.replace('#', '').strip().lower()
+                    elif line and current_section == 'description:':
+                        # Extract clean description without brackets
+                        if '[' in line and ']' in line:
+                            description = line[line.find('[')+1:line.find(']')]
+                        else:
+                            description = line
+                    elif line.startswith('-') and current_section == 'key features:':
+                        feature = line.strip('- []')
+                        if feature:
+                            features.append(feature)
+                    elif current_section == 'duration:':
+                        if line and not line.startswith('['):
+                            duration = line.strip('[]')
+                    elif current_section == 'remote testing:':
+                        remote_testing = 'yes' in line.lower() or 'available' in line.lower() or 'supported' in line.lower()
+                
+                # Clean up and validate the description
+                if not description or len(description.strip()) < 10:
+                    # Fallback to a basic description if the LLM output is insufficient
+                    description = f"Assessment measuring key competencies and skills for {assessment_name}."
+                
+                # Ensure features list is not empty
+                if not features:
+                    features = ["Measures relevant job competencies", "Provides standardized assessment"]
+                
+                # Clean up duration string
+                if duration:
+                    # Extract numbers from duration string
+                    duration_numbers = re.findall(r'\d+', duration)
+                    if duration_numbers:
+                        duration = duration_numbers[0]  # Take the first number found
                         
                 # Fallback duration extraction if not found in analysis
                 if not duration and 'approximate completion time' in extracted_text.lower():
@@ -239,7 +261,7 @@ def extract_attributes(distances, indices):
                 result = {
                     'Assessment_Name': assessment_name,
                     'URL': item.get('url', 'N/A'),
-                    'Summary': summary,
+                    'description': description,
                     'Key_Features': features,
                     'Duration': duration,
                     'Remote_Testing': remote_testing,
@@ -254,7 +276,7 @@ def extract_attributes(distances, indices):
                 results.append({
                     'Assessment_Name': 'Error',
                     'URL': 'N/A',
-                    'Summary': f"Error processing assessment: {str(e)}",
+                    'description': f"Error processing assessment: {str(e)}",
                     'Key_Features': [],
                     'Duration': '',
                     'Remote_Testing': False,
@@ -267,7 +289,7 @@ def extract_attributes(distances, indices):
             results.append({
                 'Assessment_Name': 'No Results',
                 'URL': 'N/A',
-                'Summary': "No matching assessments found for your query.",
+                'description': "No matching assessments found for your query.",
                 'Key_Features': ["Try a different search term", "Be more specific about the job role or skills"],
                 'Duration': '',
                 'Remote_Testing': False,
@@ -282,7 +304,7 @@ def extract_attributes(distances, indices):
         return [{
             'Assessment Name': 'Error',
             'URL': 'N/A',
-            'Summary': f"An unexpected error occurred: {str(e)}",
+            'description': f"An unexpected error occurred: {str(e)}",
             'Key Features': ["Please try again later"],
             'Duration': '',
             'Remote Testing': False,
@@ -351,7 +373,7 @@ def main():
         return [{
             'Assessment Name': 'Error',
             'URL': 'N/A',
-            'Summary': f"An error occurred while processing your query: {str(e)}",
+            'description': f"An error occurred while processing your query: {str(e)}",
             'Key Features': ["Please try again later"],
             'Duration': '',
             'Remote Testing': False,
