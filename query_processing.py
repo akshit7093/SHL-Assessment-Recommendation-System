@@ -160,9 +160,13 @@ def extract_attributes(distances, indices):
                 try:
                     # Use Gemma to analyze the assessment details with a structured prompt
                     llm_chain = get_llm()
+                    
+                    # Extract assessment-specific content from the vector DB
+                    assessment_content = extracted_text.split('\n\n')[0]  # Get first section which contains assessment-specific info
+                    
                     analysis = llm_chain.invoke(
                         f"""Assessment Data:
-                        {extracted_text}
+                        {assessment_content}
                         
                         Please analyze this specific assessment and provide a focused, assessment-specific output with these exact section headers. Avoid general company information.
                         
